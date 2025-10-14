@@ -24,3 +24,8 @@ backend/.env.local
 # Service account files (never commit)
 serviceAccount.json
 backend/serviceAccount*.json
+
+# firebase deploy scaffolding (we're using Vercel)
+functions/
+firebase.json
+.firebaserc
