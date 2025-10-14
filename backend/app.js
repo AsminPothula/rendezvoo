@@ -1,4 +1,3 @@
-// backend/app.js
 import express from "express";
 import cors from "cors";
 import * as dotenv from "dotenv";
@@ -10,37 +9,32 @@ import userRoutes from "./routes/userRoutes.js";
 const app = express();
 
 /**
- * Allow one or more origins via env, e.g.
- * ALLOWED_ORIGIN="https://rendezvoo-omega.vercel.app,https://rendezvoo-omega-git-*.vercel.app"
- * If empty, be permissive (useful while debugging).
+ * ALLOWED_ORIGIN can be a single origin or comma-separated list.
+ * Example:
+ *   ALLOWED_ORIGIN="https://rendezvoo-omega.vercel.app"
+ *   ALLOWED_ORIGIN="https://rendezvoo-omega.vercel.app,https://rendezvoo-omega-git-*.vercel.app"
  */
 const raw = (process.env.ALLOWED_ORIGIN || "").trim();
-const allowList = raw
-  ? raw.split(",").map(s => s.trim()).filter(Boolean)
-  : []; // empty list => permissive for now
+const allowList = raw ? raw.split(",").map(s => s.trim()).filter(Boolean) : [];
 
-const originFn = (origin, cb) => {
-  // server-to-server / curl without Origin
-  if (!origin) return cb(null, true);
-
-  // permissive during testing if no ALLOWED_ORIGIN provided
-  if (allowList.length === 0) return cb(null, true);
-
-  // exact matches OR support simple wildcard like https://foo-git-*.vercel.app
-  const ok = allowList.some(pat => {
-    if (pat.includes("*")) {
-      const re = new RegExp("^" + pat.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace("\\*", ".*") + "$");
-      return re.test(origin);
-    }
-    return origin === pat;
-  });
-
-  // never throw – just disallow
-  return cb(null, ok);
+// exact or wildcard matcher (supports a single * segment)
+const matchOrigin = (origin, pattern) => {
+  if (pattern.includes("*")) {
+    const re = new RegExp("^" + pattern
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      .replace("\\*", ".*") + "$");
+    return re.test(origin);
+  }
+  return origin === pattern;
 };
 
 const corsOpts = {
-  origin: originFn,
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);                  // server-to-server / curl
+    if (allowList.length === 0) return cb(null, true);   // permissive during testing
+    const ok = allowList.some(p => matchOrigin(origin, p));
+    return cb(null, ok);                                  // never throw
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -48,7 +42,7 @@ const corsOpts = {
 };
 
 app.use(cors(corsOpts));
-// ensure every preflight gets a 200 with CORS headers
+// ensure all preflights get 200 + proper headers
 app.options("*", cors(corsOpts), (_req, res) => res.sendStatus(200));
 
 app.use(express.json());
