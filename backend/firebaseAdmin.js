@@ -1,93 +1,49 @@
 // backend/firebaseAdmin.js
-import admin from 'firebase-admin';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import admin from "firebase-admin";
 
-/** ------------------------------------------------------------------
- * Safety-net: load env here too, in case server.js didn't load it yet
- * ------------------------------------------------------------------ */
-try {
-  // Prefer .env.local if present
-  if (fs.existsSync(path.resolve(process.cwd(), '.env.local'))) {
-    const dotenv = await import('dotenv');
-    dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
-    if (!process.env.SILENT_ENV_LOGS) console.log('🧪 [firebaseAdmin] Loaded .env.local');
-  } else if (fs.existsSync(path.resolve(process.cwd(), '.env'))) {
-    const dotenv = await import('dotenv');
-    dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-    if (!process.env.SILENT_ENV_LOGS) console.log('🧪 [firebaseAdmin] Loaded .env');
-  } else {
-    if (!process.env.SILENT_ENV_LOGS) console.log('🧪 [firebaseAdmin] No .env/.env.local found at CWD');
-  }
-} catch { /* ignore if dotenv not installed */ }
+// --- lazy init so OPTIONS/preflight can't crash ---
+let initialized = false;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+function ensureInitialized() {
+  if (initialized || admin.apps.length) { initialized = true; return; }
 
-/** Utility: safe shorthand logging (no secrets) */
-function dbg(msg, extra = {}) {
-  if (process.env.NODE_ENV === 'production') return;
-  if (process.env.SILENT_ENV_LOGS) return;
-  console.log(`🔎 [firebaseAdmin] ${msg}`, extra);
-}
-
-function loadCreds() {
-  // 1) Inline JSON
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    dbg('Using FIREBASE_SERVICE_ACCOUNT env', {
-      length: process.env.FIREBASE_SERVICE_ACCOUNT.length,
-    });
-    try {
-      const obj = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      // quick sanity checks
-      if (!obj.client_email || !obj.private_key) {
-        throw new Error('Missing client_email/private_key in FIREBASE_SERVICE_ACCOUNT');
+  try {
+    const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (sa) {
+      const creds = JSON.parse(sa);
+      if (!creds.client_email || !creds.private_key) {
+        throw new Error("FIREBASE_SERVICE_ACCOUNT missing client_email/private_key");
       }
-      return obj;
-    } catch (e) {
-      console.error('❌ FIREBASE_SERVICE_ACCOUNT is not valid JSON (or missing fields).');
-      throw e;
+      admin.initializeApp({ credential: admin.credential.cert(creds) });
+      initialized = true;
+      return;
+    }
+
+    // No inline creds — still create a default app so imports won't crash.
+    // (If no ADC is present, actual DB calls will fail at use-time, not import-time.)
+    admin.initializeApp();
+    initialized = true;
+  } catch (e) {
+    console.error("firebase-admin init failed (will fall back to default app):", e);
+    if (!admin.apps.length) {
+      try { admin.initializeApp(); initialized = true; }
+      catch { /* leave uninitialized; callers can handle */ }
     }
   }
-
-  // 2) Path env
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    // Resolve relative to this file (backend/)
-    const abs = path.resolve(__dirname, process.env.GOOGLE_APPLICATION_CREDENTIALS);
-    dbg('Using GOOGLE_APPLICATION_CREDENTIALS file', { abs });
-    if (!fs.existsSync(abs)) {
-      throw new Error(`GOOGLE_APPLICATION_CREDENTIALS points to missing file: ${abs}`);
-    }
-    return JSON.parse(fs.readFileSync(abs, 'utf8'));
-  }
-
-  // 3) Fallback default path: ./keys/serviceAccount.json (relative to backend/)
-  const fallback = path.resolve(__dirname, './keys/serviceAccount.json');
-  dbg('Trying fallback key path', { fallbackExists: fs.existsSync(fallback), fallback });
-  if (fs.existsSync(fallback)) {
-    return JSON.parse(fs.readFileSync(fallback, 'utf8'));
-  }
-
-  // Nothing found
-  return null;
 }
 
-if (!admin.apps.length) {
-  const creds = loadCreds();
-  if (!creds) {
-    console.error('❌ No Firebase Admin credentials found.');
-    console.error('   Checked: FIREBASE_SERVICE_ACCOUNT, GOOGLE_APPLICATION_CREDENTIALS, ./keys/serviceAccount.json');
-    console.error('   CWD:', process.cwd());
-    console.error('   __dirname (backend):', __dirname);
-    throw new Error('Firebase Admin not configured. See logs above.');
-  }
-
-  admin.initializeApp({ credential: admin.credential.cert(creds) });
-  dbg('Firebase Admin initialized');
+// Export *functions* so handlers can call them after method checks
+export function getAdmin() {
+  ensureInitialized();
+  return admin;
 }
-
-export const adminAuth = admin.auth();
-export const adminDb = admin.firestore();
+export function getDb() {
+  ensureInitialized();
+  return admin.firestore();
+}
+export function getAuth() {
+  ensureInitialized();
+  return admin.auth();
+}
 export const FieldValue = admin.firestore.FieldValue;
 export default admin;

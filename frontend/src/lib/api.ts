@@ -2,8 +2,13 @@
 const RAW = (import.meta.env.VITE_API_BASE ?? "").trim();
 export const API_BASE = RAW.endsWith("/") ? RAW.slice(0, -1) : RAW;
 
+if (!API_BASE && import.meta.env.DEV) {
+  // eslint-disable-next-line no-console
+  console.warn("[api] VITE_API_BASE is empty; requests will be relative to the frontend origin");
+}
+
 function join(base: string, path: string) {
-  if (!base) return path;
+  if (!base) return path;                     // fallback: relative (usually wrong for this app)
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${base}${p}`;
 }

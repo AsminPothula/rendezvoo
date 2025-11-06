@@ -4,16 +4,15 @@ import { auth } from "./firebase";
 /** Returns { Authorization: 'Bearer <idToken>' } or {} */
 export async function authHeaders(): Promise<Record<string, string>> {
   try {
-    // If auth hasn't finished initializing, wait one tick
+    // wait a tick if auth hasn't finished loading the current user
     if (!auth?.currentUser) {
-      await new Promise(r => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
     }
 
     const user = auth?.currentUser;
     if (!user) return {};
 
-    // Get cached token; caller can force refresh on 401 if needed
-    const token = await user.getIdToken();
+    const token = await user.getIdToken(); // cached Firebase ID token
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};

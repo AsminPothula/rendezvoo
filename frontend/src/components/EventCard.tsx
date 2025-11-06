@@ -1,4 +1,4 @@
-//import React from "react";
+// frontend/src/components/EventCard.tsx
 
 type Event = {
   id: string;
@@ -10,32 +10,43 @@ type Event = {
   city?: string;
   venue?: string;
   capacity?: number;
+
+  // Backends vary: support both keys gracefully
+  registeredCount?: number;
   registrationsCount?: number;
-  tags?: string[];   // optional
-  // anything else from your API is OK; we only read the above keys
+
+  tags?: string[];
 };
 
 export default function EventCard({
   ev,
   onRegister,
+  onUnregister,
   onOpen,
 }: {
   ev: Partial<Event> & { id: string };
-  onRegister?: (ev: Event) => void;
-  onOpen?: (ev: Event) => void;
+  onRegister?: (ev: Event) => void | Promise<void>;
+  onUnregister?: (ev: Event) => void | Promise<void>;
+  onOpen?: (ev: Event) => void | Promise<void>;
 }) {
   // Safe fallbacks so nothing throws
   const title = ev.title ?? "Untitled event";
-  const description = (ev.description ?? "").toString();
+  const description = String(ev.description ?? "");
   const category = ev.category ?? "Event";
   const date = ev.date ?? "";
   const time = ev.time ?? "";
   const city = ev.city ?? "";
   const venue = ev.venue ?? "";
   const tags = Array.isArray(ev.tags) ? ev.tags : [];
+
+  // Normalize counts (prefer registeredCount, else registrationsCount)
   const capacity = Number.isFinite(Number(ev.capacity)) ? Number(ev.capacity) : 0;
-  const reg = Number.isFinite(Number(ev.registrationsCount)) ? Number(ev.registrationsCount) : 0;
-  const spotsLeft = capacity > 0 ? Math.max(0, capacity - reg) : 0;
+  const regRaw =
+    ev.registeredCount ??
+    ev.registrationsCount ??
+    0;
+  const registered = Number.isFinite(Number(regRaw)) ? Number(regRaw) : 0;
+  const spotsLeft = capacity > 0 ? Math.max(0, capacity - registered) : 0;
 
   const prettyDate =
     date && time ? new Date(`${date}T${time}:00`).toLocaleString() :
@@ -71,21 +82,29 @@ export default function EventCard({
       <div className="row" style={{ justifyContent: "space-between", marginTop: 12, alignItems: "center" }}>
         <div className="kicker">
           {capacity > 0 ? (
-            <>Capacity {capacity} · Spots left {spotsLeft}</>
+            <>Capacity {capacity} · {registered} registered · {spotsLeft} left</>
           ) : (
-            <>Open capacity</>
+            <>Open capacity · {registered} registered</>
           )}
         </div>
-        {onRegister && (
-          <button className="btn" onClick={() => onRegister(ev as Event)}>
-            Register
-          </button>
-        )}
-        {!onRegister && onOpen && (
-          <button className="btn" onClick={() => onOpen(ev as Event)}>
-            View
-          </button>
-        )}
+
+        <div className="row" style={{ gap: 8 }}>
+          {onRegister && (
+            <button className="btn" onClick={() => onRegister(ev as Event)}>
+              Register
+            </button>
+          )}
+          {onUnregister && (
+            <button className="btn ghost" onClick={() => onUnregister(ev as Event)}>
+              Unregister
+            </button>
+          )}
+          {!onRegister && onOpen && (
+            <button className="btn" onClick={() => onOpen(ev as Event)}>
+              View
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

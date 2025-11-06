@@ -1,32 +1,35 @@
-import { adminAuth, adminDb } from "../firebaseAdmin.js";
+// backend/middleware/auth.js
+import { getAuth } from "../firebaseAdmin.js";
 
-/**
- * Verifies Firebase ID token and attaches req.user = { id, email, name, role }
- */
-export async function verifyFirebaseToken(req, res, next) {
+/** Reads Firebase ID token from Authorization header if present */
+export async function authOptional(req, _res, next) {
   try {
-    const header = req.headers.authorization || "";
-    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-    if (!token) return res.status(401).json({ error: "Missing token" });
-
-    const decoded = await adminAuth.verifyIdToken(token);
-    const baseUser = { id: decoded.uid, email: decoded.email || null, name: decoded.name || null };
-
-    // fetch role from Firestore users/{uid} if present
-    let role = "attendee";
-    const uDoc = await adminDb.collection("users").doc(baseUser.id).get();
-    if (uDoc.exists && uDoc.data()?.role) role = uDoc.data().role;
-
-    req.user = { ...baseUser, role };
-    next();
-  } catch (e) {
-    console.error("verifyFirebaseToken failed:", e);
-    res.status(401).json({ error: "Invalid token" });
+    const hdr = req.headers.authorization || "";
+    const match = hdr.match(/^Bearer\s+(.+)$/i);
+    if (match) {
+      const token = match[1];
+      const auth = getAuth();
+      const decoded = await auth.verifyIdToken(token);
+      req.user = { uid: decoded.uid, email: decoded.email || null };
+    }
+  } catch {
+    // ignore — user stays unauthenticated
   }
+  next();
 }
 
-/** Require organizer role */
-export function requireOrganizer(req, res, next) {
-  if (req.user?.role === "organizer") return next();
-  return res.status(403).json({ error: "Organizer role required" });
+/** Requires a valid Firebase ID token */
+export async function authRequired(req, res, next) {
+  try {
+    const hdr = req.headers.authorization || "";
+    const match = hdr.match(/^Bearer\s+(.+)$/i);
+    if (!match) return res.status(401).json({ ok: false, error: "Missing Authorization" });
+    const token = match[1];
+    const auth = getAuth();
+    const decoded = await auth.verifyIdToken(token);
+    req.user = { uid: decoded.uid, email: decoded.email || null };
+    next();
+  } catch (e) {
+    return res.status(401).json({ ok: false, error: "Invalid token" });
+  }
 }

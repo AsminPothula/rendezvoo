@@ -9,76 +9,46 @@ import userRoutes from "./routes/userRoutes.js";
 
 const app = express();
 
-/**
- * ALLOWED_ORIGIN can be a single origin or comma-separated list, e.g.:
- *   https://rendezvoo-omega.vercel.app,
- *   https://rendezvoo-omega-git-*.vercel.app
- */
-const raw = (process.env.ALLOWED_ORIGIN || "").trim();
-const allowList = raw ? raw.split(",").map(s => s.trim()).filter(Boolean) : [];
-
-const matchOrigin = (origin, pattern) => {
-  if (!pattern) return false;
-  if (pattern.includes("*")) {
-    const re = new RegExp("^" + pattern
-      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-      .replace("\\*", ".*") + "$");
-    return re.test(origin);
-  }
-  return origin === pattern;
-};
-
-const corsOrigin = (origin, cb) => {
-  if (!origin) return cb(null, true);       // curl / server-to-server
-  if (allowList.length === 0) return cb(null, true); // permissive if unset
-  const ok = allowList.some(p => matchOrigin(origin, p));
-  cb(null, ok);
-};
-
-// ---- CORS must be FIRST ----
+/** ---------- Ultra-early CORS + OPTIONS short-circuit ---------- */
 app.use((req, res, next) => {
-  res.header("Vary", "Origin"); // ensure CDN caches by Origin
+  // vary by origin so caches don’t mix responses
+  res.header("Vary", "Origin");
+
+  const origin = req.headers.origin;
+  const allowList = (process.env.ALLOWED_ORIGIN || "")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  const allow =
+    !origin ||
+    allowList.length === 0 ||
+    allowList.some(p =>
+      p.includes("*")
+        ? new RegExp("^" + p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace("\\*", ".*") + "$").test(origin)
+        : p === origin
+    );
+
+  if (allow && origin) res.header("Access-Control-Allow-Origin", origin);
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") return res.sendStatus(204); // <- never touches DB
   next();
 });
-
-app.use(cors({
-  origin: corsOrigin,
-  credentials: true,
-  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-  allowedHeaders: ["Content-Type","Authorization"],
-}));
-
-// Handle ALL preflights with headers
-app.options("*", cors({ origin: corsOrigin, credentials: true }), (_req, res) => {
-  res.sendStatus(204);
-});
-// ----------------------------
+/** -------------------------------------------------------------- */
 
 app.use(express.json());
-
-// show current deploy + which origins are allowed
-app.get("/api/health", (_req, res) => {
+app.get("/api/health", (_req, res) =>
   res.json({
     ok: true,
     version: process.env.VERCEL_GIT_COMMIT_SHA || "local",
-    allowedOrigin: process.env.ALLOWED_ORIGIN || "(unset)"
-  });
-});
+    allowedOrigin: process.env.ALLOWED_ORIGIN || "(unset)",
+  })
+);
 
-// echo CORS info for the exact browser origin hitting you
-app.get("/api/debug/cors", (req, res) => {
-  const origin = req.headers.origin || null;
-  res.json({
-    origin,
-    allowList: (process.env.ALLOWED_ORIGIN || "").split(",").map(s=>s.trim()).filter(Boolean),
-    method: req.method,
-    note: "If OPTIONS to /api/events/:id/register doesn't return ACAO, CORS will block."
-  });
-});
-
-
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
-
+// Mount routes (these can safely import lazy getDb/getAuth)
 app.use("/api/events", eventRoutes);
 app.use("/api/users", userRoutes);
 

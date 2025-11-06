@@ -1,12 +1,12 @@
-import express from "express";
-import { loginUpsert, getUser, updateUser } from "../controllers/userController.js";
-import { verifyFirebaseToken } from "../middleware/auth.js";
+// backend/routes/userRoutes.js
+import { Router } from "express";
+import { authRequired } from "../middleware/auth.js";
 
-const router = express.Router();
+const router = Router();
+router.options("/me", (_req, res) => res.sendStatus(204));
 
-// All require auth
-router.post("/login", verifyFirebaseToken, loginUpsert);
-router.get("/:id", verifyFirebaseToken, getUser);
-router.put("/:id", verifyFirebaseToken, updateUser);
+router.get("/me", authRequired, (req, res) => {
+  res.json({ ok: true, user: req.user });
+});
 
 export default router;
