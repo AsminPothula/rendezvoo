@@ -1,35 +1,46 @@
-// app.js
+// app.js  — minimal crash-proof serverless Express
 const express = require('express');
-const cors = require('cors');
 
 const app = express();
+app.disable('x-powered-by');
 
-// JSON body parsing (POST/PUT/PATCH need this)
-app.use(express.json());
+// Body parser
+app.use(express.json({ limit: '1mb' }));
 
-// CORS — set exact origins you use
-app.use(cors({
-  origin: ['https://rendezvoo-omega.vercel.app', 'http://localhost:3000'],
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  credentials: true
-}));
-app.options('*', cors()); // handle all preflights
-
-// --- your real route(s) ---
-// Example: the one you’ve been calling
-app.options('/api/events/:id/register', (req, res) => res.sendStatus(204));
-app.post('/api/events/:id/register', async (req, res) => {
-  try {
-    const { id } = req.params;
-    // ... your logic here ...
-    res.status(200).json({ ok: true, id });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ ok: false, error: 'server_error' });
+// CORS (no external deps; short-circuit OPTIONS)
+const ALLOWED = new Set([
+  'https://rendezvoo-omega.vercel.app',
+  'http://localhost:3000'
+]);
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
   }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
 });
 
-// Optional: root GET so you can sanity-check deploy without a health path
+// ---- Your endpoint (keep it trivial first) ----
+app.post('/api/events/:id/register', async (req, res, next) => {
+  try {
+    // TEMP: do nothing fancy; just echo to prove it's working
+    res.status(200).json({ ok: true, id: req.params.id, body: req.body });
+  } catch (err) { next(err); }
+});
+
+// Optional root
 app.get('/', (req, res) => res.status(200).send('rendezvoo backend up'));
 
-module.exports = app; // <-- critical for Vercel
+// Global error handler so nothing crashes the function silently
+app.use((err, req, res, _next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ ok: false, error: err.message });
+});
+
+// Vercel serverless export (NOT app.listen)
+module.exports = (req, res) => app(req, res);
