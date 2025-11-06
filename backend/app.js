@@ -56,6 +56,27 @@ app.options("*", cors({ origin: corsOrigin, credentials: true }), (_req, res) =>
 
 app.use(express.json());
 
+// show current deploy + which origins are allowed
+app.get("/api/health", (_req, res) => {
+  res.json({
+    ok: true,
+    version: process.env.VERCEL_GIT_COMMIT_SHA || "local",
+    allowedOrigin: process.env.ALLOWED_ORIGIN || "(unset)"
+  });
+});
+
+// echo CORS info for the exact browser origin hitting you
+app.get("/api/debug/cors", (req, res) => {
+  const origin = req.headers.origin || null;
+  res.json({
+    origin,
+    allowList: (process.env.ALLOWED_ORIGIN || "").split(",").map(s=>s.trim()).filter(Boolean),
+    method: req.method,
+    note: "If OPTIONS to /api/events/:id/register doesn't return ACAO, CORS will block."
+  });
+});
+
+
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/api/events", eventRoutes);
