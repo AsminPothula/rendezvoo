@@ -8,10 +8,9 @@ import userRoutes from "./routes/userRoutes.js";
 
 const app = express();
 
-// ---------- CORS (before any routes) ----------
+/* ---------- CORS first ---------- */
 const raw = (process.env.ALLOWED_ORIGIN || "").trim();
 const allowList = raw ? raw.split(",").map(s => s.trim()).filter(Boolean) : [];
-
 const matchOrigin = (origin, pattern) => {
   if (!origin || !pattern) return false;
   if (pattern.includes("*")) {
@@ -22,15 +21,9 @@ const matchOrigin = (origin, pattern) => {
   }
   return origin === pattern;
 };
-
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  let allowed = false;
-
-  if (!origin) allowed = true;                 // curl/server-to-server
-  else if (allowList.length === 0) allowed = true;  // permissive if unset
-  else allowed = allowList.some(p => matchOrigin(origin, p));
-
+  const allowed = !origin || allowList.length === 0 || allowList.some(p => matchOrigin(origin, p));
   if (allowed && origin) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
@@ -38,19 +31,19 @@ app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   }
-
   if (req.method === "OPTIONS") return res.status(204).end();
   next();
 });
-// ----------------------------------------------
+/* -------------------------------- */
 
 app.use(express.json());
 
-app.get("/api/health", (_req, res) => {
+/* IMPORTANT: no '/api' prefix here */
+app.get("/health", (_req, res) => {
   res.json({ ok: true, allowedOrigin: raw || "(permissive)" });
 });
 
-app.use("/api/events", eventRoutes);
-app.use("/api/users", userRoutes);
+app.use("/events", eventRoutes); // not '/api/events'
+app.use("/users", userRoutes);   // not '/api/users'
 
 export default app;
