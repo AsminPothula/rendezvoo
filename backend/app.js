@@ -39,11 +39,11 @@ app.use((req, res, next) => {
 app.use(express.json());
 
 /* IMPORTANT: no '/api' prefix here */
-app.get("/health", (_req, res) => {
-  res.json({ ok: true, allowedOrigin: raw || "(permissive)" });
-});
+// backend/app.js (excerpt)
+app.get("/health", (_req, res) => res.json({ ok: true, via: "express" }));
+app.use("/events", eventRoutes);
+app.use("/users", userRoutes);
 
-app.use("/events", eventRoutes); // not '/api/events'
-app.use("/users", userRoutes);   // not '/api/users'
+
 
 export default app;
