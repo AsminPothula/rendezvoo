@@ -1,6 +1,5 @@
-// Catch-all so *every* /api/* route (including OPTIONS) hits Express
+// Wrap the Express app for Vercel Serverless
 import app from "../app.js";
 
-export default function handler(req, res) {
-  return app(req, res);
-}
+// Vercel will call this with (req, res). Express apps are request handlers, so:
+export default app;
